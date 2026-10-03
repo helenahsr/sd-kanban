@@ -1,1 +1,22 @@
+# Dependências do Node.js
+node_modules/
+
+# Variáveis de ambiente e credenciais (Segurança)
 .env
+.env.local
+
+# Logs de depuração
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Diretórios de build (útil para o frontend)
+build/
+dist/
+.next/
+out/
+
+# Arquivos temporários de sistema operacional
+.DS_Store
+Thumbs.db
