@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kanban Distribuído</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="board">
+        <div class="column" id="todo" data-status="todo">
+            <h2>To Do</h2>
+            <div class="card" draggable="true" id="task-1">Tarefa 1: Modelar Banco</div>
+            <div class="card" draggable="true" id="task-2">Tarefa 2: Criar Worker</div>
+        </div>
+        <div class="column" id="doing" data-status="doing">
+            <h2>Doing</h2>
+        </div>
+        <div class="column" id="done" data-status="done">
+            <h2>Done</h2>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
