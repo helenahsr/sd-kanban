@@ -1,0 +1,10 @@
+sd-kanban-k6-run-33d59fa1de0b,15.62%,93MiB / 7.689GiB
+sd-kanban-frontend-1,0.00%,9.918MiB / 7.689GiB
+sd-kanban-load-balancer-1,9.59%,12.41MiB / 7.689GiB
+sd-kanban-worker-1,1.11%,23.66MiB / 7.689GiB
+sd-kanban-worker-2,1.23%,23.54MiB / 7.689GiB
+sd-kanban-api-gateway-1,24.03%,67.23MiB / 7.689GiB
+sd-kanban-api-gateway-2,25.17%,68.4MiB / 7.689GiB
+sd-kanban-message-broker-1,14.83%,154.7MiB / 7.689GiB
+sd-kanban-database-1,34.85%,433.9MiB / 7.689GiB
+sd-kanban-history-db-1,5.69%,393MiB / 7.689GiB

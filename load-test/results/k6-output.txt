@@ -1,0 +1,40 @@
+ Container sd-kanban-load-balancer-1 Running 
+ Container sd-kanban-message-broker-1 Running 
+ Container sd-kanban-api-gateway-1 Running 
+ Container sd-kanban-api-gateway-2 Running 
+ Container sd-kanban-database-1 Running 
+ Container sd-kanban-database-1 Waiting 
+ Container sd-kanban-message-broker-1 Waiting 
+ Container sd-kanban-message-broker-1 Healthy 
+ Container sd-kanban-database-1 Healthy 
+ Container sd-kanban-api-gateway-1 Waiting 
+ Container sd-kanban-api-gateway-2 Waiting 
+ Container sd-kanban-api-gateway-1 Healthy 
+ Container sd-kanban-api-gateway-2 Healthy 
+ Container sd-kanban-k6-run-33d59fa1de0b Creating 
+ Container sd-kanban-k6-run-33d59fa1de0b Created 
+         /\      Grafana   /‾‾/  
+    /\  /  \     |\  __   /  /   
+   /  \/    \    | |/ /  /   ‾‾\ 
+  /          \   |   (  |  (‾)  |
+ / __________ \  |_|\_\  \_____/ 
+     execution: local
+        script: /scripts/kanban.js
+        output: -
+     scenarios: (100.00%) 1 scenario, 50 max VUs, 3m30s max duration (incl. graceful stop):
+              * usuarios: Up to 50 looping VUs for 3m20s over 5 stages (gracefulRampDown: 10s, gracefulStop: 30s)
+Requisições: 19110 (94.8 req/s)
+Erros: 0.00%
+Latência geral: média 19.1ms | p95 35.1ms | p99 305.6ms
+  list    p95 4.8ms
+  create  p95 49.9ms
+  move    p95 46.3ms
+  update  p95 49.2ms
+  delete  p95 38.6ms
+Threshold http_req_duration{endpoint:move} p(95)<500: OK
+Threshold http_req_duration{endpoint:update} p(95)<500: OK
+Threshold http_req_failed rate<0.01: OK
+Threshold http_req_duration{endpoint:list} p(95)<500: OK
+Threshold http_req_duration{endpoint:delete} p(95)<500: OK
+Threshold http_req_duration p(95)<500: OK
+Threshold http_req_duration{endpoint:create} p(95)<500: OK

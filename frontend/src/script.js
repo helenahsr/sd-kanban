@@ -93,18 +93,197 @@ function updateCounters() {
     }
 }
 
-// Notifica a API Gateway de forma assíncrona
+// ==========================================
+// COMUNICAÇÃO COM A API GATEWAY
+// ==========================================
+
+// Usa o mesmo host da página: funciona em localhost e quando outra máquina da rede abre o Kanban
+const API_URL = `http://${window.location.hostname || 'localhost'}:4000`;
+
+const REQUEST_TIMEOUT_MS = 8000;
+
+// Identificador que acompanha a ação do usuário por todos os serviços (logs da API, fila e worker).
+// crypto.randomUUID só existe em contexto seguro (localhost/https); fora disso usa um fallback.
+function newCorrelationId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
+}
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Erro de HTTP com status, para decidir se vale tentar de novo
+class ApiError extends Error {
+    constructor(message, status) {
+        super(message);
+        this.status = status;
+    }
+}
+
+// Chamada à API com timeout. GET/PUT/DELETE são idempotentes e ganham retry com
+// backoff exponencial em falhas de rede/5xx; POST não, para não criar a tarefa duas vezes.
+async function api(method, path, body) {
+    const correlationId = newCorrelationId();
+    const retries = method === 'POST' ? 0 : 2;
+
+    for (let attempt = 0; ; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+        try {
+            const res = await fetch(`${API_URL}${path}`, {
+                method,
+                headers: {
+                    'X-Correlation-Id': correlationId,
+                    ...(body ? { 'Content-Type': 'application/json' } : {})
+                },
+                body: body ? JSON.stringify(body) : undefined,
+                signal: controller.signal
+            });
+            const data = await res.json().catch(() => ({}));
+            console.log(`[API] ${method} ${path} -> ${res.status} (réplica ${res.headers.get('X-Instance')}, correlationId ${correlationId})`);
+            if (!res.ok) {
+                throw new ApiError(data.message || `HTTP ${res.status}`, res.status);
+            }
+            return data;
+        } catch (err) {
+            // 4xx é erro do pedido: repetir não adianta
+            const transient = !(err instanceof ApiError) || err.status >= 500;
+            if (attempt >= retries || !transient) {
+                throw err.name === 'AbortError' ? new Error(`Tempo esgotado (${REQUEST_TIMEOUT_MS / 1000}s)`) : err;
+            }
+            const delay = 300 * 2 ** attempt;
+            console.warn(`[API] Falha em ${method} ${path}, nova tentativa em ${delay}ms:`, err.message);
+            await sleep(delay);
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+}
+
+// Mostra erro e ressincroniza a tela com o servidor (desfaz mudanças otimistas)
+function handleApiError(action, err) {
+    console.warn(`[API Gateway] Falha ao ${action}:`, err.message);
+    alert(`Não foi possível ${action}: ${err.message}`);
+    loadTasks();
+}
+
+// Notifica a API Gateway da movimentação (o card já foi movido na tela)
 async function notifyBackendMove(taskId, newColumn) {
     console.log(`[API Sync] Tarefa ${taskId} movida para ${newColumn}`);
     try {
-        await fetch('http://localhost:4000/move-task', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ taskId, newColumn })
-        });
+        await api('PUT', `/tasks/${taskId}/move`, { newColumn });
     } catch (err) {
-        // Log leve caso backend esteja desligado no teste frontend
-        console.warn('[API Gateway] Não foi possível contatar o servidor local:', err.message);
+        handleApiError('mover a tarefa', err);
+    }
+}
+
+// ==========================================
+// RENDERIZAÇÃO DOS CARDS
+// ==========================================
+const cardDomId = (taskId) => `task-${taskId}`;
+
+function getCardsContainer(status) {
+    const column = document.querySelector(`.column[data-status="${status}"]`);
+    return column ? column.querySelector('.cards-container') : null;
+}
+
+// Monta o card. Textos do usuário entram via textContent (nunca innerHTML) para evitar XSS
+function createCardElement(task) {
+    const card = document.createElement('div');
+    card.className = 'card bg-white p-4 rounded-xl border border-slate-200/90 shadow-xs hover:shadow-md hover:border-slate-300 transition-all duration-200 cursor-grab active:cursor-grabbing flex flex-col gap-2.5 group shrink-0 select-none';
+    card.draggable = true;
+    card.id = cardDomId(task.id);
+    card.dataset.id = task.id;
+
+    card.innerHTML = `
+        <div class="flex items-center justify-between gap-2">
+            <span class="priority-badge"></span>
+            <div class="flex items-center gap-1 opacity-80 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                <button class="edit-btn p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition" title="Editar tarefa">
+                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                    </svg>
+                </button>
+                <button class="delete-btn p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition" title="Excluir tarefa">
+                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <h3 class="task-name font-semibold text-slate-800 text-sm leading-snug break-words"></h3>
+        <div class="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
+            <div class="flex items-center gap-1.5">
+                <span class="avatar-badge"></span>
+                <span class="task-assignee-text text-slate-600 font-medium"></span>
+            </div>
+            <span class="task-creator-text text-[11px] text-slate-400"></span>
+        </div>
+    `;
+
+    setupCardEvents(card);
+    fillCard(card, task);
+    return card;
+}
+
+// Preenche/atualiza os dados visuais de um card
+function fillCard(card, task) {
+    card.dataset.name = task.title;
+    card.dataset.assignee = task.assignee;
+    card.dataset.creator = task.creator;
+    card.dataset.priority = task.priority;
+
+    card.querySelector('.priority-badge').outerHTML = getPriorityBadgeHTML(task.priority);
+    card.querySelector('.task-name').textContent = task.title;
+    card.querySelector('.task-assignee-text').textContent = task.assignee;
+    card.querySelector('.task-creator-text').textContent = `Por: ${task.creator}`;
+
+    const avatarEl = card.querySelector('.avatar-badge');
+    avatarEl.textContent = (task.assignee.charAt(0) || 'U').toUpperCase();
+    avatarEl.className = `avatar-badge w-5 h-5 rounded-full ${getAvatarClasses(task.assignee)} font-bold text-[10px] flex items-center justify-center`;
+}
+
+// Cria ou atualiza o card de uma tarefa. É idempotente: a resposta HTTP e o evento
+// do WebSocket podem chegar em qualquer ordem sem duplicar cards.
+function upsertCard(task, { prepend = false } = {}) {
+    if (!task) return;
+    const container = getCardsContainer(task.status);
+    if (!container) return;
+
+    let card = document.getElementById(cardDomId(task.id));
+    if (card) {
+        fillCard(card, task);
+        // Só reposiciona se mudou de coluna (preserva a ordem escolhida no drag and drop)
+        if (card.parentElement !== container) container.appendChild(card);
+    } else {
+        card = createCardElement(task);
+        if (prepend) container.insertBefore(card, container.firstChild);
+        else container.appendChild(card);
+    }
+
+    applyFilter();
+    updateCounters();
+}
+
+function removeCard(taskId) {
+    const card = document.getElementById(cardDomId(taskId));
+    if (card) {
+        card.remove();
+        updateCounters();
+    }
+}
+
+// Busca todas as tarefas no servidor e redesenha o quadro
+async function loadTasks() {
+    try {
+        const tasks = await api('GET', '/tasks');
+        document.querySelectorAll('.cards-container').forEach(c => c.replaceChildren());
+        tasks.forEach(task => upsertCard(task));
+        updateCounters();
+        console.log(`[API Sync] ${tasks.length} tarefa(s) carregada(s)`);
+    } catch (err) {
+        console.warn('[API Gateway] Não foi possível carregar as tarefas:', err.message);
     }
 }
 
@@ -187,8 +366,9 @@ function setupCardEvents(card) {
             e.stopPropagation();
             const taskTitle = card.dataset.name || 'esta tarefa';
             if (confirm(`Tem certeza que deseja excluir "${taskTitle}"?`)) {
-                card.remove();
-                updateCounters();
+                removeCard(card.dataset.id);
+                api('DELETE', `/tasks/${card.dataset.id}`)
+                    .catch(err => handleApiError('excluir a tarefa', err));
             }
         });
     }
@@ -244,10 +424,10 @@ columns.forEach(column => {
             draggedCard.classList.remove('dragging');
 
             const newStatus = column.getAttribute('data-status');
-            console.log(`Tarefa ${draggedCard.id} posicionada com sucesso na coluna ${newStatus}`);
+            console.log(`Tarefa ${draggedCard.dataset.id} posicionada com sucesso na coluna ${newStatus}`);
 
             // Envia evento para a API e atualiza a interface
-            notifyBackendMove(draggedCard.id, newStatus);
+            notifyBackendMove(draggedCard.dataset.id, newStatus);
             updateCounters();
         }
     });
@@ -341,7 +521,7 @@ window.addEventListener('keydown', (e) => {
 // ==========================================
 // SUBMISSÃO DO FORMULÁRIO (CRIAR / EDITAR)
 // ==========================================
-taskForm.addEventListener('submit', (e) => {
+taskForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const taskName = taskNameInput.value.trim();
@@ -354,127 +534,52 @@ taskForm.addEventListener('submit', (e) => {
         return;
     }
 
-    const targetColumn = document.getElementById(taskStatus);
-    const targetCardsContainer = targetColumn ? targetColumn.querySelector('.cards-container') : null;
-
-    if (!targetCardsContainer) return;
-
-    if (editingCard) {
-        // === FLUXO DE EDIÇÃO ===
-        editingCard.dataset.name = taskName;
-        editingCard.dataset.assignee = taskAssignee;
-        editingCard.dataset.priority = taskPriority;
-
-        // Atualiza elementos visuais internos
-        const nameEl = editingCard.querySelector('.task-name');
-        if (nameEl) nameEl.textContent = taskName;
-
-        const priorityBadgeEl = editingCard.querySelector('.priority-badge');
-        if (priorityBadgeEl) {
-            priorityBadgeEl.outerHTML = getPriorityBadgeHTML(taskPriority);
-        }
-
-        const assigneeEl = editingCard.querySelector('.task-assignee-text');
-        if (assigneeEl) assigneeEl.textContent = taskAssignee;
-
-        const avatarEl = editingCard.querySelector('.avatar-badge');
-        if (avatarEl) {
-            avatarEl.textContent = (taskAssignee.charAt(0) || 'U').toUpperCase();
-            avatarEl.className = `avatar-badge w-5 h-5 rounded-full ${getAvatarClasses(taskAssignee)} font-bold text-[10px] flex items-center justify-center`;
-        }
-
-        // Se o status/coluna mudou, move o card para o topo da nova coluna
-        const currentColumn = editingCard.closest('.column');
-        const currentStatus = currentColumn ? currentColumn.getAttribute('data-status') : null;
-
-        if (currentStatus !== taskStatus) {
-            targetCardsContainer.insertBefore(editingCard, targetCardsContainer.firstChild);
-            notifyBackendMove(editingCard.id, taskStatus);
-        }
-
-    } else {
-        // === FLUXO DE CRIAÇÃO ===
-        const newTaskId = `task-${Date.now()}`;
-        const newCard = document.createElement('div');
-        newCard.className = 'card bg-white p-4 rounded-xl border border-slate-200/90 shadow-xs hover:shadow-md hover:border-slate-300 transition-all duration-200 cursor-grab active:cursor-grabbing flex flex-col gap-2.5 group shrink-0 select-none';
-        newCard.draggable = true;
-        newCard.id = newTaskId;
-
-        newCard.dataset.name = taskName;
-        newCard.dataset.assignee = taskAssignee;
-        newCard.dataset.creator = taskCreator;
-        newCard.dataset.priority = taskPriority;
-
-        const initialLetter = (taskAssignee.charAt(0) || 'U').toUpperCase();
-        const avatarColor = getAvatarClasses(taskAssignee);
-        const priorityBadge = getPriorityBadgeHTML(taskPriority);
-
-        newCard.innerHTML = `
-            <div class="flex items-center justify-between gap-2">
-                ${priorityBadge}
-                <div class="flex items-center gap-1 opacity-80 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                    <button class="edit-btn p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition" title="Editar tarefa">
-                        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                        </svg>
-                    </button>
-                    <button class="delete-btn p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition" title="Excluir tarefa">
-                        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="3 6 5 6 21 6"></polyline>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                        </svg>
-                    </button>
-                </div>
-            </div>
-            <h3 class="task-name font-semibold text-slate-800 text-sm leading-snug break-words">${taskName}</h3>
-            <div class="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
-                <div class="flex items-center gap-1.5">
-                    <span class="avatar-badge w-5 h-5 rounded-full ${avatarColor} font-bold text-[10px] flex items-center justify-center">${initialLetter}</span>
-                    <span class="task-assignee-text text-slate-600 font-medium">${taskAssignee}</span>
-                </div>
-                <span class="task-creator-text text-[11px] text-slate-400">Por: ${taskCreator}</span>
-            </div>
-        `;
-
-        setupCardEvents(newCard);
-        // Insere o novo card no topo da coluna escolhida
-        targetCardsContainer.insertBefore(newCard, targetCardsContainer.firstChild);
-
-        console.log(`Nova tarefa criada: ${newTaskId} na coluna ${taskStatus}`);
-        notifyBackendMove(newTaskId, taskStatus);
-    }
-
+    const payload = { title: taskName, assignee: taskAssignee, priority: taskPriority, status: taskStatus };
+    const card = editingCard;
     closeModal();
-    updateCounters();
+
+    try {
+        if (card) {
+            // === FLUXO DE EDIÇÃO ===
+            const task = await api('PUT', `/tasks/${card.dataset.id}`, payload);
+            upsertCard(task);
+        } else {
+            // === FLUXO DE CRIAÇÃO ===
+            const task = await api('POST', '/tasks', { ...payload, creator: taskCreator });
+            // Insere o novo card no topo da coluna escolhida
+            upsertCard(task, { prepend: true });
+            console.log(`Nova tarefa criada: ${task.id} na coluna ${task.status}`);
+        }
+    } catch (err) {
+        handleApiError(card ? 'salvar a tarefa' : 'criar a tarefa', err);
+    }
 });
 
 // ==========================================
 // FILTRO E BUSCA EM TEMPO REAL
 // ==========================================
+function applyFilter() {
+    const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
+    document.querySelectorAll('.card').forEach(card => {
+        const name = (card.dataset.name || '').toLowerCase();
+        const assignee = (card.dataset.assignee || '').toLowerCase();
+        const creator = (card.dataset.creator || '').toLowerCase();
+        const priority = (card.dataset.priority || '').toLowerCase();
+
+        const matches = !query ||
+            name.includes(query) ||
+            assignee.includes(query) ||
+            creator.includes(query) ||
+            priority.includes(query);
+
+        card.style.display = matches ? 'flex' : 'none';
+    });
+}
+
 if (searchInput) {
-    searchInput.addEventListener('input', (e) => {
-        const query = e.target.value.trim().toLowerCase();
-
-        document.querySelectorAll('.card').forEach(card => {
-            const name = (card.dataset.name || '').toLowerCase();
-            const assignee = (card.dataset.assignee || '').toLowerCase();
-            const creator = (card.dataset.creator || '').toLowerCase();
-            const priority = (card.dataset.priority || '').toLowerCase();
-
-            const matches = !query ||
-                name.includes(query) ||
-                assignee.includes(query) ||
-                creator.includes(query) ||
-                priority.includes(query);
-
-            if (matches) {
-                card.style.display = 'flex';
-            } else {
-                card.style.display = 'none';
-            }
-        });
-
+    searchInput.addEventListener('input', () => {
+        applyFilter();
         updateCounters();
     });
 }
@@ -482,10 +587,55 @@ if (searchInput) {
 // ==========================================
 // INICIALIZAÇÃO
 // ==========================================
-// Aplica os eventos em todos os cards já presentes no HTML
-document.querySelectorAll('.card').forEach(card => {
-    setupCardEvents(card);
+updateCounters();
+loadTasks();
+
+// ==========================================
+// WEBSOCKET (Socket.io)
+// ==========================================
+// Conecta ao WebSocket via balanceador. Só transporte websocket: o long-polling faria
+// várias requisições HTTP que poderiam cair em réplicas diferentes da API
+const socket = io(API_URL, { transports: ['websocket'] });
+let hasConnectedBefore = false;
+
+socket.on('connect', () => {
+    console.log('Conectado ao WebSocket da API!', socket.id);
+    // Numa reconexão (ex.: a réplica caiu), recarrega tudo para recuperar eventos perdidos
+    if (hasConnectedBefore) loadTasks();
+    hasConnectedBefore = true;
 });
 
-// Atualiza contadores iniciais
-updateCounters();
+socket.on('disconnect', (reason) => {
+    console.warn('[WebSocket] Desconectado:', reason, '- tentando reconectar...');
+});
+
+socket.on('connect_error', (err) => {
+    console.warn('[WebSocket] Falha ao conectar na API:', err.message);
+});
+
+// Eventos repassados pela API a todos os clientes. Formato:
+// { eventId, event, correlationId, taskId, task, details, at, origin }
+function logEvent(evt) {
+    console.log(`Atualização recebida via WebSocket (${evt.event}) - tarefa ${evt.taskId}, correlationId ${evt.correlationId}, origem ${evt.origin}`, evt);
+}
+
+socket.on('task_created', (evt) => {
+    logEvent(evt);
+    upsertCard(evt.task, { prepend: true });
+});
+
+socket.on('task_updated', (evt) => {
+    logEvent(evt);
+    upsertCard(evt.task);
+});
+
+socket.on('task_moved', (evt) => {
+    logEvent(evt);
+    // Se o card já está na coluna, foi este próprio cliente que moveu: nada muda
+    upsertCard(evt.task);
+});
+
+socket.on('task_deleted', (evt) => {
+    logEvent(evt);
+    removeCard(evt.taskId);
+});
