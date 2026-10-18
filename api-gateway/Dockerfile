@@ -1,5 +1,5 @@
 # Usa uma imagem leve do Node.js
-FROM node:18-alpine
+FROM node:20-alpine
 
 # Define o diretório de trabalho dentro do container
 WORKDIR /usr/src/app
@@ -8,13 +8,14 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 
 # Instala as dependências
-RUN npm install
+RUN npm install --omit=dev
 
 # Copia o restante do código do projeto para o container
 COPY . .
 
-# Expõe a porta da aplicação (no worker, você pode omitir essa linha)
+# Expõe a porta da aplicação
 EXPOSE 4000
 
 # Comando padrão para iniciar a aplicação
-CMD ["npm", "start"]
+# node direto (e não npm start) para receber o SIGTERM do `docker stop` e encerrar limpo
+CMD ["node", "src/index.js"]
