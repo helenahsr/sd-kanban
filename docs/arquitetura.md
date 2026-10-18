@@ -111,8 +111,8 @@ sequenceDiagram
     API1->>DB: UPDATE card SET status = doing
     API1->>MQ: publish kanban.events<br/>{eventId: e-9, event: task_moved, correlationId: c-123}
     MQ-->>API1: Confirmação (publisher confirm)
-    API1-->>LB: 200 {task}
-    LB-->>NA: 200 {task}
+    API1-->>LB: 200 {success, queued, task}
+    LB-->>NA: 200 {success, queued, task}
 
     par Fanout para as réplicas da API
         MQ->>API1: Evento (fila exclusiva da réplica 1)
@@ -163,7 +163,7 @@ Publicados no exchange `kanban.events` (fanout, durável), com mensagens persist
   "event": "task_moved",
   "correlationId": "c-123",
   "taskId": 7,
-  "task": { "id": 7, "title": "Revisar ADRs", "assignee": "Gustavo", "creator": "Helena", "priority": "alta", "status": "doing" },
+  "task": { "id": 7, "title": "Revisar ADRs", "assignee": "Gustavo", "creator": "Helena", "priority": "alta", "status": "doing", "updatedAt": "2026-10-18T02:23:16.649Z" },
   "details": { "from": "todo", "to": "doing" },
   "at": "2026-10-18T02:23:16.649Z",
   "origin": "4bc32e45e397"

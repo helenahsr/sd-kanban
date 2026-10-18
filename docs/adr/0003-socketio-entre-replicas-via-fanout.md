@@ -1,6 +1,6 @@
 # ADR 0003: Tempo real entre réplicas da API via exchange fanout, sem sticky session
 
-**Status:** Proposto
+**Status:** Aceito
 **Data:** 2026-10-18
 
 ## Contexto
@@ -16,7 +16,7 @@ Além disso, o Socket.io começa por padrão com *long-polling* HTTP e só depoi
 1. **Cada réplica da API cria uma fila exclusiva** (sem nome, apagada quando a réplica desconecta) ligada ao exchange **fanout** `kanban.events`. Todo evento publicado por qualquer réplica chega a todas as réplicas, e cada uma faz `io.emit()` para os **seus** clientes.
 2. A réplica que publicou **não** faz `io.emit()` diretamente: ela também recebe o evento pela própria fila. Assim existe um único caminho de entrega, sem duplicação.
 3. O cliente Socket.io usa **apenas o transporte `websocket`** (`transports: ['websocket']`). Uma conexão WebSocket é uma única conexão TCP, que fica presa à réplica escolhida no momento da conexão. Por isso **não é preciso sticky session** e o balanceador continua em round-robin puro.
-4. **Degradação controlada:** se o broker estiver fora do ar, a réplica faz `io.emit()` local. Os clientes conectados nela continuam recebendo as atualizações, e os da outra réplica recuperam o estado quando reconectam (o frontend recarrega o quadro a cada reconexão).
+4. **Degradação controlada:** se o broker estiver fora do ar, a réplica faz `io.emit()` local. Os clientes conectados nela continuam recebendo as atualizações, e os da outra réplica não recebem as atualizações enquanto o broker estiver fora; recuperam o estado quando reconectarem o WebSocket ou recarregarem a página (o frontend recarrega o quadro a cada reconexão).
 
 ## Alternativas consideradas
 
