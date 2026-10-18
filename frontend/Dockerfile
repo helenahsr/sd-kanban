@@ -1,8 +1,7 @@
-FROM node:18-alpine
-WORKDIR /usr/src/app
-COPY package*.json ./
-RUN npm install
-COPY . .
-EXPOSE 3000
-# Comando típico para rodar um servidor de desenvolvimento (React/Next/Vite)
-CMD ["npm", "run", "dev"]
+# Servidor web leve para os arquivos estáticos (HTML/CSS/JS puro)
+FROM nginx:1.27-alpine
+
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY src/ /usr/share/nginx/html/
+
+EXPOSE 80
