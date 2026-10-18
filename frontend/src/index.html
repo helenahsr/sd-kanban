@@ -1,27 +1,374 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kanban Distribuído</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Kanban Distribuído | Painel Ágil</title>
+    <!-- Google Fonts: Inter e Plus Jakarta Sans -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <!-- Tailwind via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        display: ['Plus Jakarta Sans', 'Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar para visual limpo e minimalista */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 9999px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* Estilo do placeholder ao arrastar */
+        .drop-placeholder {
+            animation: pulsePlaceholder 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulsePlaceholder {
+
+            0%,
+            100% {
+                opacity: 0.6;
+            }
+
+            50% {
+                opacity: 0.9;
+            }
+        }
+
+        /* Estado de arrasto ativo */
+        .card.dragging {
+            opacity: 0.4;
+            transform: scale(0.98);
+        }
+
+        .column-drag-active {
+            border-color: #818cf8 !important;
+            background-color: #f1f5f9 !important;
+        }
+    </style>
 </head>
-<body>
-    <div class="board">
-        <div class="column" id="todo" data-status="todo">
-            <h2>To Do</h2>
-            <div class="card" draggable="true" id="task-1">Tarefa 1: Modelar Banco</div>
-            <div class="card" draggable="true" id="task-2">Tarefa 2: Criar Worker</div>
+
+<body
+    class="font-sans bg-slate-50 text-slate-800 min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
+
+    <!-- Header Principal -->
+    <header class="bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-30 shadow-xs">
+        <div
+            class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+
+            <!-- Logo e Título -->
+            <div class="flex items-center gap-3">
+                <div
+                    class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-md shadow-indigo-200 shrink-0">
+                    <!-- Ícone Kanban Moderno -->
+                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="5" height="18" rx="1.5"></rect>
+                        <rect x="10" y="3" width="5" height="12" rx="1.5"></rect>
+                        <rect x="17" y="3" width="5" height="15" rx="1.5"></rect>
+                    </svg>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="font-display font-bold text-xl text-slate-900 tracking-tight">SD Kanban</h1>
+                        <span
+                            class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                            Sistemas Distribuídos
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-500 font-medium">Arraste e organize os cards livremente em qualquer
+                        posição</p>
+                </div>
+            </div>
+
+            <!-- Barra de Busca e Ações -->
+            <div class="flex items-center gap-3 flex-wrap sm:flex-nowrap">
+                <!-- Campo de Busca em Tempo Real -->
+                <div class="relative w-full sm:w-64">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
+                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                    </span>
+                    <input type="text" id="searchInput" placeholder="Filtrar por nome ou responsável..."
+                        class="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-100 hover:bg-slate-50 focus:bg-white border border-slate-200 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-150">
+                </div>
+
+                <!-- Resumo Geral de Tarefas -->
+                <div
+                    class="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-slate-100/80 rounded-lg border border-slate-200/60 text-xs font-medium text-slate-600">
+                    <span class="text-slate-400">Total:</span>
+                    <span id="totalTasksCount" class="font-bold text-slate-800">4</span>
+                </div>
+
+                <!-- Botão Nova Tarefa Header -->
+                <button id="headerAddBtn"
+                    class="inline-flex items-center gap-2 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-semibold rounded-lg shadow-sm shadow-indigo-200 transition-all duration-150 hover:shadow-md cursor-pointer shrink-0">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    <span>Nova Tarefa</span>
+                </button>
+            </div>
+
         </div>
-        <div class="column" id="doing" data-status="doing">
-            <h2>Doing</h2>
+    </header>
+
+    <!-- Quadro Principal (Board Container) -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col min-h-0 overflow-hidden">
+
+        <div class="board grid grid-cols-1 md:grid-cols-3 gap-5 w-full flex-1 min-h-0">
+
+            <!-- Coluna 1: To Do (A Fazer) -->
+            <div class="column bg-slate-100/75 rounded-2xl p-3 sm:p-4 flex flex-col border border-slate-200/80 shadow-xs transition-colors duration-200 min-h-0"
+                id="todo" data-status="todo">
+
+                <!-- Cabeçalho da Coluna -->
+                <div class="flex items-center justify-between pb-3 mb-2 border-b border-slate-200/70 shrink-0">
+                    <div class="flex items-center gap-2.5">
+                        <span class="w-2.5 h-2.5 rounded-full bg-slate-400 ring-4 ring-slate-200/60"></span>
+                        <h2 class="font-display font-bold text-sm text-slate-700 tracking-wide uppercase">To Do</h2>
+                        <span id="todoCount"
+                            class="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-200/80 text-slate-600">0</span>
+                    </div>
+                    <button
+                        class="quick-add-btn p-1 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-md transition-colors"
+                        data-column="todo" title="Adicionar nesta coluna">
+                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Container dos Cards com scroll -->
+                <div class="cards-container flex-1 overflow-y-auto space-y-3 pr-1 py-1 min-h-[140px]">
+                </div>
+
+                <!-- Empty state discreto quando coluna não tiver cards -->
+                <div
+                    class="column-empty-state hidden flex-col items-center justify-center py-8 text-center text-slate-400 pointer-events-none">
+                    <p class="text-xs font-medium">Nenhuma tarefa aqui</p>
+                    <p class="text-[11px] text-slate-400 mt-0.5">Solte um card para posicionar</p>
+                </div>
+            </div>
+
+            <!-- Coluna 2: Doing (Em Andamento) -->
+            <div class="column bg-slate-100/75 rounded-2xl p-3 sm:p-4 flex flex-col border border-slate-200/80 shadow-xs transition-colors duration-200 min-h-0"
+                id="doing" data-status="doing">
+
+                <!-- Cabeçalho da Coluna -->
+                <div class="flex items-center justify-between pb-3 mb-2 border-b border-slate-200/70 shrink-0">
+                    <div class="flex items-center gap-2.5">
+                        <span class="w-2.5 h-2.5 rounded-full bg-amber-500 ring-4 ring-amber-200/60"></span>
+                        <h2 class="font-display font-bold text-sm text-slate-700 tracking-wide uppercase">Doing</h2>
+                        <span id="doingCount"
+                            class="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100/80 text-amber-700">0</span>
+                    </div>
+                    <button
+                        class="quick-add-btn p-1 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-md transition-colors"
+                        data-column="doing" title="Adicionar nesta coluna">
+                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Container dos Cards com scroll -->
+                <div class="cards-container flex-1 overflow-y-auto space-y-3 pr-1 py-1 min-h-[140px]">
+                </div>
+
+                <!-- Empty state discreto quando coluna não tiver cards -->
+                <div
+                    class="column-empty-state hidden flex-col items-center justify-center py-8 text-center text-slate-400 pointer-events-none">
+                    <p class="text-xs font-medium">Nenhuma tarefa aqui</p>
+                    <p class="text-[11px] text-slate-400 mt-0.5">Solte um card para posicionar</p>
+                </div>
+            </div>
+
+            <!-- Coluna 3: Done (Concluído) -->
+            <div class="column bg-slate-100/75 rounded-2xl p-3 sm:p-4 flex flex-col border border-slate-200/80 shadow-xs transition-colors duration-200 min-h-0"
+                id="done" data-status="done">
+
+                <!-- Cabeçalho da Coluna -->
+                <div class="flex items-center justify-between pb-3 mb-2 border-b border-slate-200/70 shrink-0">
+                    <div class="flex items-center gap-2.5">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-200/60"></span>
+                        <h2 class="font-display font-bold text-sm text-slate-700 tracking-wide uppercase">Done</h2>
+                        <span id="doneCount"
+                            class="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100/80 text-emerald-700">0</span>
+                    </div>
+                    <button
+                        class="quick-add-btn p-1 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-md transition-colors"
+                        data-column="done" title="Adicionar nesta coluna">
+                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Container dos Cards com scroll -->
+                <div class="cards-container flex-1 overflow-y-auto space-y-3 pr-1 py-1 min-h-[140px]">
+                </div>
+
+                <!-- Empty state discreto quando coluna não tiver cards -->
+                <div
+                    class="column-empty-state hidden flex-col items-center justify-center py-8 text-center text-slate-400 pointer-events-none">
+                    <p class="text-xs font-medium">Nenhuma tarefa aqui</p>
+                    <p class="text-[11px] text-slate-400 mt-0.5">Solte um card para posicionar</p>
+                </div>
+            </div>
+
         </div>
-        <div class="column" id="done" data-status="done">
-            <h2>Done</h2>
+
+    </main>
+
+    <!-- Botão Flutuante (FAB) -->
+    <button id="addBtn"
+        class="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white rounded-2xl w-13 h-13 sm:w-14 sm:h-14 flex items-center justify-center shadow-lg shadow-indigo-300/60 transition-all duration-200 hover:scale-105 active:scale-95 focus:outline-none focus:ring-4 focus:ring-indigo-300 z-40 group cursor-pointer"
+        title="Adicionar nova tarefa">
+        <svg class="w-6 h-6 transition-transform group-hover:rotate-90 duration-200" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+    </button>
+
+    <!-- Modal Moderno (Criar e Editar) -->
+    <div id="taskModal"
+        class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 hidden items-center justify-center p-4 transition-all duration-200">
+        <div
+            class="bg-white rounded-2xl p-6 sm:p-7 w-full max-w-md shadow-2xl border border-slate-100 transform transition-all duration-200 scale-100">
+
+            <!-- Cabeçalho do Modal -->
+            <div class="flex items-center justify-between pb-4 mb-5 border-b border-slate-100">
+                <div class="flex items-center gap-2.5">
+                    <div
+                        class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 20h9"></path>
+                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                        </svg>
+                    </div>
+                    <h2 id="modalTitle" class="text-lg font-display font-bold text-slate-800">Nova Tarefa</h2>
+                </div>
+                <button type="button" id="closeModalXBtn"
+                    class="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Formulário -->
+            <form id="taskForm" class="space-y-4">
+                <div>
+                    <label class="block text-slate-700 text-xs font-semibold mb-1.5" for="taskName">Título da
+                        Tarefa</label>
+                    <input type="text" id="taskName" required placeholder="Ex: Desenvolver endpoint de filas"
+                        class="w-full px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100/70 focus:bg-white text-slate-800 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-slate-700 text-xs font-semibold mb-1.5" for="taskStatus">Coluna /
+                            Status</label>
+                        <select id="taskStatus"
+                            class="w-full px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100/70 focus:bg-white text-slate-800 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
+                            <option value="todo">To Do (A Fazer)</option>
+                            <option value="doing">Doing (Em Andamento)</option>
+                            <option value="done">Done (Concluído)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-slate-700 text-xs font-semibold mb-1.5"
+                            for="taskPriority">Prioridade</label>
+                        <select id="taskPriority"
+                            class="w-full px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100/70 focus:bg-white text-slate-800 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
+                            <option value="alta">Alta</option>
+                            <option value="media" selected>Média</option>
+                            <option value="baixa">Baixa</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-slate-700 text-xs font-semibold mb-1.5"
+                        for="taskAssignee">Responsável</label>
+                    <input type="text" id="taskAssignee" required placeholder="Ex: Helena"
+                        class="w-full px-3.5 py-2.5 bg-slate-50 hover:bg-slate-100/70 focus:bg-white text-slate-800 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all">
+                </div>
+
+                <div>
+                    <label class="block text-slate-700 text-xs font-semibold mb-1.5" for="taskCreator">Criador</label>
+                    <input type="text" id="taskCreator" required placeholder="Ex: Vinicius"
+                        class="w-full px-3.5 py-2.5 bg-slate-50 text-slate-800 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all disabled:bg-slate-100 disabled:text-slate-400 disabled:border-slate-200 disabled:cursor-not-allowed">
+                </div>
+
+                <div class="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 mt-6">
+                    <button type="button" id="closeModalBtn"
+                        class="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition cursor-pointer">
+                        Cancelar
+                    </button>
+                    <button type="submit"
+                        class="px-5 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 rounded-xl shadow-sm shadow-indigo-200 hover:shadow-md transition cursor-pointer">
+                        Salvar Tarefa
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script src="script.js"></script>
 </body>
+
 </html>
