@@ -63,6 +63,12 @@ Quando os containers estiverem verdes no Docker Desktop, você pode acessar:
 * **API Gateway (via balanceador):** http://localhost:4000 — o header `X-Instance` da resposta mostra qual réplica atendeu
 * **Painel do RabbitMQ:** http://localhost:15672 *(Usuário: `guest` | Senha: `guest`)*
 
+## Documentação de arquitetura
+
+* [Arquitetura](docs/arquitetura.md): diagramas C4 (níveis 1 e 2), diagrama de sequência do fluxo principal e contrato dos eventos
+* [ADRs](docs/adr/README.md): decisões de arquitetura e trade-offs
+* [Relatório do teste de carga](load-test/RELATORIO.md)
+
 ## Fluxo distribuído
 
 1. O **Frontend** chama a API REST pelo **load-balancer** (`http://<host>:4000`), enviando um `X-Correlation-Id`.
