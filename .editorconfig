@@ -1,0 +1,6 @@
+# Garante que todos os editores salvem em UTF-8 (evita acentos corrompidos no init.sql)
+root = true
+
+[*]
+charset = utf-8
+insert_final_newline = true
