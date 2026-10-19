@@ -1,6 +1,6 @@
 # ADR 0005: Balanceamento com Nginx e retry apenas em operações idempotentes
 
-**Status:** Proposto
+**Status:** Aceito
 **Data:** 2026-10-18
 
 ## Contexto

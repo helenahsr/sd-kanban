@@ -1,6 +1,6 @@
 # ADR 0002: Um banco por serviço
 
-**Status:** Proposto
+**Status:** Aceito
 **Data:** 2026-10-18
 
 ## Contexto

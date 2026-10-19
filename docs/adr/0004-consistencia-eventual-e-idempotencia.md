@@ -1,6 +1,6 @@
 # ADR 0004: Consistência eventual com entrega at-least-once, consumidor idempotente e DLQ
 
-**Status:** Proposto
+**Status:** Aceito
 **Data:** 2026-10-18
 
 ## Contexto

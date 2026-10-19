@@ -1,6 +1,6 @@
 # ADR 0001: REST síncrono para comandos do usuário e RabbitMQ assíncrono para o histórico
 
-**Status:** Proposto
+**Status:** Aceito
 **Data:** 2026-10-18
 
 ## Contexto
