@@ -22,16 +22,9 @@ CREATE TABLE card (
     FOREIGN KEY (fk_id_status) REFERENCES status(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE historico (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    fk_id_card INT NOT NULL,
-    evento VARCHAR(30) NOT NULL,
-    detalhes JSON,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (fk_id_card) REFERENCES card(id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- O histórico de eventos fica no banco próprio do worker (serviço history-db)
 
 INSERT INTO status (codigo, nome) VALUES
     ('todo', 'Tarefas Pendentes'),
     ('doing', 'Em Andamento'),
-    ('done', 'ConcluÃdo');
+    ('done', 'Concluído');
